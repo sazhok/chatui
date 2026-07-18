@@ -17,6 +17,7 @@ export default function Home() {
   const [models, setModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
   const [ready, setReady] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -77,45 +78,53 @@ export default function Home() {
   const handleSend = async (content: string) => {
     if (!selectedModel) return;
     setSending(true);
+    setSendError("");
     setMessages((prev) => [...prev, { role: "user", content }]);
 
-    let conversationId = activeId;
-    if (conversationId === null) {
-      const res = await fetch("/api/conversations", {
+    try {
+      let conversationId = activeId;
+      if (conversationId === null) {
+        const res = await fetch("/api/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: selectedModel }),
+        });
+        if (!res.ok) throw new Error("Failed to create conversation");
+        const data = await res.json();
+        conversationId = data.id;
+        setActiveId(conversationId);
+      }
+
+      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+
+      const res = await fetch(`/api/conversations/${conversationId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: selectedModel }),
+        body: JSON.stringify({ content }),
       });
-      const data = await res.json();
-      conversationId = data.id;
-      setActiveId(conversationId);
-    }
-
-    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-
-    const res = await fetch(`/api/conversations/${conversationId}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
-    });
-    const reader = res.body?.getReader();
-    const decoder = new TextDecoder();
-    let assistantText = "";
-    if (reader) {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        assistantText += decoder.decode(value, { stream: true });
-        setMessages((prev) => {
-          const next = [...prev];
-          next[next.length - 1] = { role: "assistant", content: assistantText };
-          return next;
-        });
+      if (!res.ok) throw new Error("Request failed");
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let assistantText = "";
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          assistantText += decoder.decode(value, { stream: true });
+          setMessages((prev) => {
+            const next = [...prev];
+            next[next.length - 1] = { role: "assistant", content: assistantText };
+            return next;
+          });
+        }
       }
-    }
 
-    setSending(false);
-    await refreshConversations();
+      await refreshConversations();
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setSending(false);
+    }
   };
 
   if (!ready) {
@@ -148,6 +157,9 @@ export default function Home() {
           ))}
           <div ref={bottomRef} />
         </div>
+        {sendError && (
+          <div className="px-4 py-2 text-sm text-red-400">{sendError}</div>
+        )}
         <ChatInput onSend={handleSend} disabled={sending || !selectedModel} />
       </div>
     </div>
