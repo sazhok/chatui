@@ -1,0 +1,18 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+
+# backend
+backend/.venv
+backend/.env
+backend/chatui.db
+backend/logs/
+backend/*.pid
+backend/*.log
+
+# frontend (node_modules etc. also covered by frontend/.gitignore)
+frontend/node_modules
+frontend/.next/
+frontend/logs/
+frontend/*.pid
+frontend/*.log
