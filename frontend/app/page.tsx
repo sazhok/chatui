@@ -5,12 +5,16 @@ import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import ChatMessage from "@/components/ChatMessage";
 import ChatInput from "@/components/ChatInput";
-import ModelPicker from "@/components/ModelPicker";
-import { Conversation, Message } from "@/lib/types";
+import SettingsModal from "@/components/SettingsModal";
+import SearchModal from "@/components/SearchModal";
+import { AttachmentDraft, Conversation, Message } from "@/lib/types";
 
 export default function Home() {
   const router = useRouter();
   const [username, setUsername] = useState("");
+  const [role, setRole] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -38,6 +42,7 @@ export default function Home() {
       }
       const me = await meRes.json();
       setUsername(me.username);
+      setRole(me.role);
 
       const modelsRes = await fetch("/api/models");
       if (modelsRes.ok) {
@@ -56,6 +61,17 @@ export default function Home() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const handleSelect = async (id: number) => {
     const res = await fetch(`/api/conversations/${id}`);
     if (!res.ok) return;
@@ -70,16 +86,38 @@ export default function Home() {
     setMessages([]);
   };
 
+  const syncMessages = async (conversationId: number | null) => {
+    if (conversationId === null) return;
+    const res = await fetch(`/api/conversations/${conversationId}`);
+    if (res.ok) {
+      const data = await res.json();
+      setMessages(data.messages);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    const res = await fetch(`/api/conversations/${id}`, { method: "DELETE" });
+    if (!res.ok) return;
+    if (id === activeId) {
+      setActiveId(null);
+      setMessages([]);
+    }
+    await refreshConversations();
+  };
+
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
   };
 
-  const handleSend = async (content: string) => {
+  const handleSend = async (content: string, attachments: AttachmentDraft[]) => {
     if (!selectedModel) return;
     setSending(true);
     setSendError("");
-    setMessages((prev) => [...prev, { role: "user", content }]);
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content, attachments: attachments.map((a) => ({ filename: a.filename })) },
+    ]);
 
     try {
       let conversationId = activeId;
@@ -100,25 +138,71 @@ export default function Home() {
       const res = await fetch(`/api/conversations/${conversationId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, attachments }),
       });
       if (!res.ok) throw new Error("Request failed");
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
-      let assistantText = "";
       if (reader) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          assistantText += decoder.decode(value, { stream: true });
+          const delta = decoder.decode(value, { stream: true });
           setMessages((prev) => {
             const next = [...prev];
-            next[next.length - 1] = { role: "assistant", content: assistantText };
+            const last = next[next.length - 1];
+            next[next.length - 1] = { ...last, content: last.content + delta };
             return next;
           });
         }
       }
 
+      await syncMessages(conversationId);
+      await refreshConversations();
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleEditMessage = async (messageId: number, content: string) => {
+    if (activeId === null) return;
+    setSending(true);
+    setSendError("");
+
+    setMessages((prev) => {
+      const idx = prev.findIndex((m) => m.id === messageId);
+      if (idx === -1) return prev;
+      const truncated = prev.slice(0, idx + 1);
+      truncated[idx] = { ...truncated[idx], content };
+      return [...truncated, { role: "assistant", content: "" }];
+    });
+
+    try {
+      const res = await fetch(`/api/conversations/${activeId}/messages/${messageId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      if (!res.ok) throw new Error("Failed to edit message");
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const delta = decoder.decode(value, { stream: true });
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            next[next.length - 1] = { ...last, content: last.content + delta };
+            return next;
+          });
+        }
+      }
+
+      await syncMessages(activeId);
       await refreshConversations();
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "Something went wrong");
@@ -132,28 +216,44 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen">
+    <div className="fixed inset-0 flex overflow-hidden">
       <Sidebar
         conversations={conversations}
         activeId={activeId}
         onSelect={handleSelect}
         onNewChat={handleNewChat}
+        onDelete={handleDelete}
         onLogout={handleLogout}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSearch={() => setSearchOpen(true)}
         username={username}
+        models={models}
+        selectedModel={selectedModel}
+        onModelChange={setSelectedModel}
+        modelPickerDisabled={activeId !== null}
       />
-      <div className="flex flex-1 flex-col">
-        <div className="flex items-center justify-between border-b border-border px-4 py-2">
-          <span className="text-sm opacity-70">chatui</span>
-          <ModelPicker
-            models={models}
-            value={selectedModel}
-            onChange={setSelectedModel}
-            disabled={activeId !== null}
-          />
-        </div>
-        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-6">
+      {settingsOpen && (
+        <SettingsModal username={username} role={role} onClose={() => setSettingsOpen(false)} />
+      )}
+      {searchOpen && (
+        <SearchModal
+          conversations={conversations}
+          onSelect={handleSelect}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-6">
           {messages.map((m, i) => (
-            <ChatMessage key={i} message={m} />
+            <ChatMessage
+              key={m.id ?? i}
+              message={m}
+              onEdit={
+                m.role === "user" && m.id != null && !sending
+                  ? (content) => handleEditMessage(m.id as number, content)
+                  : undefined
+              }
+            />
           ))}
           <div ref={bottomRef} />
         </div>

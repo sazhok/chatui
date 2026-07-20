@@ -46,6 +46,17 @@ async def stream_chat(user_api_key: str, model: str, messages: List[Dict]) -> As
                         yield delta
 
 
+async def get_usage(user_api_key: str, username: str) -> List[Dict]:
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.get(
+            f"{VLLM_ROUTER_URL}/usage",
+            headers={"Authorization": f"Bearer {user_api_key}"},
+        )
+        response.raise_for_status()
+    rows = response.json().get("usage", [])
+    return [row for row in rows if row.get("user") == username]
+
+
 async def provision_vllm_user(username: str) -> str:
     if not VLLM_ROUTER_ADMIN_KEY:
         raise RuntimeError("VLLM_ROUTER_ADMIN_KEY is not set")

@@ -16,7 +16,7 @@ export default function ModelPicker({
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
-      className="rounded-md border border-border bg-transparent px-2 py-1 text-sm"
+      className="w-full rounded-md border border-border bg-transparent px-2 py-1 text-sm disabled:opacity-40"
     >
       <option value="" disabled>
         Select a model
