@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import { AttachmentRef, Message } from "@/lib/types";
 
 function AttachmentChips({ attachments }: { attachments: AttachmentRef[] }) {
@@ -83,7 +86,12 @@ export default function ChatMessage({
           <AttachmentChips attachments={message.attachments} />
         )}
         <div className="prose dark:prose-invert prose-sm max-w-none">
-          <ReactMarkdown>{message.content}</ReactMarkdown>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeKatex]}
+          >
+            {message.content}
+          </ReactMarkdown>
         </div>
         {onEdit && (
           <button
