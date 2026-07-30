@@ -7,6 +7,7 @@ import ChatMessage from "@/components/ChatMessage";
 import ChatInput from "@/components/ChatInput";
 import SettingsModal from "@/components/SettingsModal";
 import SearchModal from "@/components/SearchModal";
+import AllChatsView from "@/components/AllChatsView";
 import { AttachmentDraft, Conversation, Message } from "@/lib/types";
 
 export default function Home() {
@@ -17,6 +18,7 @@ export default function Home() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
+  const [view, setView] = useState<"chat" | "allChats">("chat");
   const [messages, setMessages] = useState<Message[]>([]);
   const [models, setModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
@@ -78,12 +80,14 @@ export default function Home() {
     const data = await res.json();
     setActiveId(id);
     setMessages(data.messages);
+    setView("chat");
     if (data.model) setSelectedModel(data.model);
   };
 
   const handleNewChat = () => {
     setActiveId(null);
     setMessages([]);
+    setView("chat");
   };
 
   const syncMessages = async (conversationId: number | null) => {
@@ -222,6 +226,8 @@ export default function Home() {
         activeId={activeId}
         onSelect={handleSelect}
         onNewChat={handleNewChat}
+        onShowAllChats={() => setView("allChats")}
+        allChatsActive={view === "allChats"}
         onDelete={handleDelete}
         onLogout={handleLogout}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -243,24 +249,35 @@ export default function Home() {
         />
       )}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-6">
-          {messages.map((m, i) => (
-            <ChatMessage
-              key={m.id ?? i}
-              message={m}
-              onEdit={
-                m.role === "user" && m.id != null && !sending
-                  ? (content) => handleEditMessage(m.id as number, content)
-                  : undefined
-              }
-            />
-          ))}
-          <div ref={bottomRef} />
-        </div>
-        {sendError && (
-          <div className="px-4 py-2 text-sm text-red-400">{sendError}</div>
+        {view === "allChats" ? (
+          <AllChatsView
+            conversations={conversations}
+            activeId={activeId}
+            onSelect={handleSelect}
+            onDelete={handleDelete}
+          />
+        ) : (
+          <>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-6">
+              {messages.map((m, i) => (
+                <ChatMessage
+                  key={m.id ?? i}
+                  message={m}
+                  onEdit={
+                    m.role === "user" && m.id != null && !sending
+                      ? (content) => handleEditMessage(m.id as number, content)
+                      : undefined
+                  }
+                />
+              ))}
+              <div ref={bottomRef} />
+            </div>
+            {sendError && (
+              <div className="px-4 py-2 text-sm text-red-400">{sendError}</div>
+            )}
+            <ChatInput onSend={handleSend} disabled={sending || !selectedModel} />
+          </>
         )}
-        <ChatInput onSend={handleSend} disabled={sending || !selectedModel} />
       </div>
     </div>
   );
