@@ -10,7 +10,7 @@ import SearchModal from "@/components/SearchModal";
 import AllChatsView from "@/components/AllChatsView";
 import { AttachmentDraft, Conversation, Message } from "@/lib/types";
 
-export default function Home() {
+export default function ChatsPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [role, setRole] = useState("");

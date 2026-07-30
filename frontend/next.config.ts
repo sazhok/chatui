@@ -5,6 +5,17 @@ const nextConfig: NextConfig = {
   devIndicators: {
     position: "bottom-right",
   },
+  async redirects() {
+    // Root is just an entry point: every product lives under its own path
+    // (/chats now, /checklists etc. later).
+    return [
+      {
+        source: "/",
+        destination: "/chats",
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

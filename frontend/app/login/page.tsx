@@ -21,7 +21,7 @@ export default function LoginPage() {
       setError("Invalid username or password");
       return;
     }
-    router.push("/");
+    router.push("/chats");
   };
 
   return (
