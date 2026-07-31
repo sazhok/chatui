@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import ModelPicker from "@/components/ModelPicker";
 
 function getInitials(username: string): string {
   const parts = username.split(/[\s_-]+/).filter(Boolean);
@@ -13,22 +12,17 @@ function getInitials(username: string): string {
 
 export default function UserMenu({
   username,
-  models,
-  selectedModel,
-  onModelChange,
-  modelPickerDisabled,
   onOpenSettings,
   onLogout,
   collapsed,
+  extras,
 }: {
   username: string;
-  models: string[];
-  selectedModel: string | null;
-  onModelChange: (model: string) => void;
-  modelPickerDisabled: boolean;
   onOpenSettings: () => void;
   onLogout: () => void;
   collapsed?: boolean;
+  /** Product-specific rows (e.g. the chat model picker), rendered below Settings. */
+  extras?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ bottom: number; left: number } | null>(null);
@@ -77,15 +71,7 @@ export default function UserMenu({
             >
               Settings
             </button>
-            <div className="px-3 py-2">
-              <div className="mb-1 text-xs opacity-60">Model</div>
-              <ModelPicker
-                models={models}
-                value={selectedModel}
-                onChange={onModelChange}
-                disabled={modelPickerDisabled}
-              />
-            </div>
+            {extras}
           </div>
           <div className="py-1">
             <button

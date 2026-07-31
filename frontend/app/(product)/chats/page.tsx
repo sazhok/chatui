@@ -1,20 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import Sidebar from "@/components/Sidebar";
+import ChatsSidebar from "@/components/ChatsSidebar";
 import ChatMessage from "@/components/ChatMessage";
 import ChatInput from "@/components/ChatInput";
-import SettingsModal from "@/components/SettingsModal";
 import SearchModal from "@/components/SearchModal";
 import AllChatsView from "@/components/AllChatsView";
 import { AttachmentDraft, Conversation, Message } from "@/lib/types";
 
 export default function ChatsPage() {
-  const router = useRouter();
-  const [username, setUsername] = useState("");
-  const [role, setRole] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -37,15 +31,6 @@ export default function ChatsPage() {
 
   useEffect(() => {
     (async () => {
-      const meRes = await fetch("/api/auth/me");
-      if (!meRes.ok) {
-        router.push("/login");
-        return;
-      }
-      const me = await meRes.json();
-      setUsername(me.username);
-      setRole(me.role);
-
       const modelsRes = await fetch("/api/models");
       if (modelsRes.ok) {
         const data = await modelsRes.json();
@@ -56,7 +41,6 @@ export default function ChatsPage() {
       await refreshConversations();
       setReady(true);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -107,11 +91,6 @@ export default function ChatsPage() {
       setMessages([]);
     }
     await refreshConversations();
-  };
-
-  const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
   };
 
   const handleSend = async (content: string, attachments: AttachmentDraft[]) => {
@@ -216,12 +195,12 @@ export default function ChatsPage() {
   };
 
   if (!ready) {
-    return <div className="flex h-screen items-center justify-center text-sm opacity-60">Loading...</div>;
+    return <div className="flex flex-1 items-center justify-center text-sm opacity-60">Loading...</div>;
   }
 
   return (
-    <div className="fixed inset-0 flex overflow-hidden">
-      <Sidebar
+    <>
+      <ChatsSidebar
         conversations={conversations}
         activeId={activeId}
         onSelect={handleSelect}
@@ -229,18 +208,12 @@ export default function ChatsPage() {
         onShowAllChats={() => setView("allChats")}
         allChatsActive={view === "allChats"}
         onDelete={handleDelete}
-        onLogout={handleLogout}
-        onOpenSettings={() => setSettingsOpen(true)}
         onOpenSearch={() => setSearchOpen(true)}
-        username={username}
         models={models}
         selectedModel={selectedModel}
         onModelChange={setSelectedModel}
         modelPickerDisabled={activeId !== null}
       />
-      {settingsOpen && (
-        <SettingsModal username={username} role={role} onClose={() => setSettingsOpen(false)} />
-      )}
       {searchOpen && (
         <SearchModal
           conversations={conversations}
@@ -279,6 +252,6 @@ export default function ChatsPage() {
           </>
         )}
       </div>
-    </div>
+    </>
   );
 }
