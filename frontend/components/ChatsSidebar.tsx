@@ -3,7 +3,7 @@
 import ModelPicker from "@/components/ModelPicker";
 import SidebarShell from "@/components/SidebarShell";
 import { CollapsibleSection, SectionItem } from "@/components/SidebarSections";
-import { IconButton, ListIcon, PlusIcon, SearchIcon } from "@/components/icons";
+import { ChecklistIcon, IconButton, ListIcon, PlusIcon, SearchIcon } from "@/components/icons";
 import { Conversation } from "@/lib/types";
 
 const RECENTS_LIMIT = 20;
@@ -80,7 +80,18 @@ export default function ChatsSidebar({
       }
     >
       <CollapsibleSection title="Products">
-        <p className="px-2 py-2 text-xs opacity-40">Нічого поки що немає</p>
+        {/* Each product gets its own tab, so this is a real link, not a route push. */}
+        <a
+          href="/checklists"
+          target="_blank"
+          rel="noopener"
+          className="flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/5"
+        >
+          <span className="shrink-0 opacity-70">
+            <ChecklistIcon />
+          </span>
+          <span className="min-w-0 truncate">Чек-лісти</span>
+        </a>
       </CollapsibleSection>
       <CollapsibleSection title="Recents">
         {conversations.length === 0 && (

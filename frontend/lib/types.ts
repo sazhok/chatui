@@ -30,6 +30,28 @@ export type SearchResult = Conversation & {
   snippet: string;
 };
 
+export type CatalogLocation = {
+  id: string;
+  checklists: string[];
+};
+
+export type CatalogSubdomain = {
+  name: string;
+  locations: CatalogLocation[];
+};
+
+export type ChecklistSession = {
+  id: number;
+  title: string;
+  subdomain: string;
+  created_at: string;
+  locations: string[];
+  checklists: string[];
+};
+
+/** One CSV row of a checklist, straight from the catalog (columns vary). */
+export type ChecklistQuestion = Record<string, string>;
+
 export type UsageRow = {
   user: string;
   model: string;

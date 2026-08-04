@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+import checklists_catalog
 import vllm_client
 from auth import (
     COOKIE_NAME, User, create_session_token, create_user, require_admin, require_user, verify_login,
@@ -13,6 +14,7 @@ from auth import (
 from db import connect, now
 
 MAX_ATTACHMENTS_PER_MESSAGE = 5
+MAX_SESSION_TITLE = 120
 
 
 @asynccontextmanager
@@ -51,6 +53,13 @@ class PostMessageRequest(BaseModel):
 class EditMessageRequest(BaseModel):
     content: str
     attachments: Optional[List[AttachmentIn]] = None
+
+
+class CreateChecklistSessionRequest(BaseModel):
+    subdomain: str
+    locations: List[str]
+    checklists: List[str]
+    title: Optional[str] = None
 
 
 @app.post("/api/auth/login")
@@ -446,3 +455,154 @@ async def edit_message(
         await asyncio.to_thread(_insert_message_sync, conversation_id, "assistant", "".join(full_reply))
 
     return StreamingResponse(body_iter(), media_type="text/plain")
+
+
+def _session_scope_sync(conn, session_id: int) -> dict:
+    locations = [
+        r["location_id"] for r in conn.execute(
+            "SELECT location_id FROM checklist_session_locations WHERE session_id = ? "
+            "ORDER BY location_id ASC",
+            (session_id,),
+        ).fetchall()
+    ]
+    checklists = [
+        r["checklist"] for r in conn.execute(
+            "SELECT checklist FROM checklist_session_checklists WHERE session_id = ? "
+            "ORDER BY checklist ASC",
+            (session_id,),
+        ).fetchall()
+    ]
+    return {"locations": locations, "checklists": checklists}
+
+
+def _list_sessions_sync(user_id: int) -> List[dict]:
+    conn = connect()
+    try:
+        rows = conn.execute(
+            "SELECT id, title, subdomain, created_at FROM checklist_sessions "
+            "WHERE user_id = ? ORDER BY id DESC",
+            (user_id,),
+        ).fetchall()
+        return [{**dict(row), **_session_scope_sync(conn, row["id"])} for row in rows]
+    finally:
+        conn.close()
+
+
+def _get_session_sync(session_id: int, user_id: int) -> Optional[dict]:
+    conn = connect()
+    try:
+        row = conn.execute(
+            "SELECT id, title, subdomain, created_at FROM checklist_sessions WHERE id = ? AND user_id = ?",
+            (session_id, user_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return {**dict(row), **_session_scope_sync(conn, session_id)}
+    finally:
+        conn.close()
+
+
+def _create_session_sync(
+        user_id: int, title: str, subdomain: str, locations: List[str], checklists: List[str],
+        ) -> int:
+    conn = connect()
+    try:
+        cur = conn.execute(
+            "INSERT INTO checklist_sessions (user_id, title, subdomain, created_at) VALUES (?, ?, ?, ?)",
+            (user_id, title, subdomain, now()),
+        )
+        session_id = cur.lastrowid
+        conn.executemany(
+            "INSERT INTO checklist_session_locations (session_id, location_id) VALUES (?, ?)",
+            [(session_id, location_id) for location_id in locations],
+        )
+        conn.executemany(
+            "INSERT INTO checklist_session_checklists (session_id, checklist) VALUES (?, ?)",
+            [(session_id, checklist) for checklist in checklists],
+        )
+        conn.commit()
+        return session_id
+    finally:
+        conn.close()
+
+
+def _delete_session_sync(session_id: int, user_id: int) -> bool:
+    conn = connect()
+    try:
+        cur = conn.execute(
+            "DELETE FROM checklist_sessions WHERE id = ? AND user_id = ?", (session_id, user_id),
+        )
+        conn.execute("DELETE FROM checklist_session_locations WHERE session_id = ?", (session_id,))
+        conn.execute("DELETE FROM checklist_session_checklists WHERE session_id = ?", (session_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+@app.get("/api/checklists/catalog")
+async def get_checklists_catalog(user: User = Depends(require_user)):
+    return {"subdomains": await asyncio.to_thread(checklists_catalog.get_catalog)}
+
+
+@app.get("/api/checklists/sessions")
+async def list_checklist_sessions(user: User = Depends(require_user)):
+    return {"sessions": await asyncio.to_thread(_list_sessions_sync, user.id)}
+
+
+@app.post("/api/checklists/sessions")
+async def create_checklist_session(
+        payload: CreateChecklistSessionRequest, user: User = Depends(require_user),
+        ):
+    locations = list(dict.fromkeys(payload.locations))
+    checklists = list(dict.fromkeys(payload.checklists))
+    if not locations:
+        raise HTTPException(status_code=400, detail="Pick at least one location")
+    if not checklists:
+        raise HTTPException(status_code=400, detail="Pick at least one checklist type")
+
+    problem = await asyncio.to_thread(
+        checklists_catalog.validate_scope, payload.subdomain, locations, checklists,
+    )
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
+
+    title = (payload.title or "").strip() or f"{payload.subdomain}: {', '.join(checklists)}"
+    session_id = await asyncio.to_thread(
+        _create_session_sync, user.id, title[:MAX_SESSION_TITLE], payload.subdomain, locations, checklists,
+    )
+    return {"id": session_id}
+
+
+@app.get("/api/checklists/sessions/{session_id}")
+async def get_checklist_session(session_id: int, user: User = Depends(require_user)):
+    session = await asyncio.to_thread(_get_session_sync, session_id, user.id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+
+@app.get("/api/checklists/sessions/{session_id}/questions")
+async def get_checklist_session_questions(
+        session_id: int, location: str, checklist: str, user: User = Depends(require_user),
+        ):
+    session = await asyncio.to_thread(_get_session_sync, session_id, user.id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if location not in session["locations"] or checklist not in session["checklists"]:
+        raise HTTPException(status_code=400, detail="Location or checklist is outside this session's scope")
+
+    questions = await asyncio.to_thread(
+        checklists_catalog.read_questions, session["subdomain"], location, checklist,
+    )
+    if questions is None:
+        raise HTTPException(status_code=404, detail="Checklist not found in the catalog")
+    return {"location": location, "checklist": checklist, "questions": questions}
+
+
+@app.delete("/api/checklists/sessions/{session_id}")
+async def delete_checklist_session(session_id: int, user: User = Depends(require_user)):
+    deleted = await asyncio.to_thread(_delete_session_sync, session_id, user.id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"ok": True}

@@ -78,6 +78,17 @@ export function ListIcon() {
   );
 }
 
+export function ChecklistIcon() {
+  return (
+    <Svg>
+      <polyline points="3 6 5 8 9 4" />
+      <polyline points="3 15 5 17 9 13" />
+      <line x1="13" y1="7" x2="21" y2="7" />
+      <line x1="13" y1="16" x2="21" y2="16" />
+    </Svg>
+  );
+}
+
 export function ChevronIcon({ open }: { open: boolean }) {
   return (
     <Svg className={`h-3.5 w-3.5 transition-transform duration-150 ${open ? "rotate-90" : ""}`}>

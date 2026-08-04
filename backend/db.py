@@ -39,6 +39,29 @@ def connect() -> sqlite3.Connection:
             created_at TEXT NOT NULL
         )
     """)
+    # /checklists sessions: each is scoped to one harmonica.cloud subdomain plus
+    # one or more locations and checklist types, picked when it's created.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS checklist_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            title TEXT NOT NULL,
+            subdomain TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS checklist_session_locations (
+            session_id INTEGER NOT NULL REFERENCES checklist_sessions(id),
+            location_id TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS checklist_session_checklists (
+            session_id INTEGER NOT NULL REFERENCES checklist_sessions(id),
+            checklist TEXT NOT NULL
+        )
+    """)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS attachments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
