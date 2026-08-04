@@ -1,0 +1,32 @@
+[Unit]
+Description=chatui frontend - Next.js production server for the chat web UI
+After=network-online.target chatui-backend.service
+Wants=network-online.target chatui-backend.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/hrm/local/chatui/frontend
+Environment=NODE_ENV=production
+# node comes from nvm, not /usr/bin - this path has to be updated after a node upgrade
+# (nvm ls; the unit fails to start with status=203/EXEC if the version dir is gone).
+Environment=PATH=/home/ubuntu/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+# Binds the Tailscale IP, not 0.0.0.0: this is the one browser-facing service in the tree.
+# Serves the `next build` output in .next/ - rebuild and restart after changing the frontend.
+ExecStart=/home/ubuntu/.nvm/versions/node/v24.18.0/bin/node \
+    /home/ubuntu/hrm/local/chatui/frontend/node_modules/next/dist/bin/next \
+    start -H 100.97.153.111 -p 3000
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+StandardOutput=append:/home/ubuntu/hrm/local/chatui/frontend/logs/frontend.log
+StandardError=append:/home/ubuntu/hrm/local/chatui/frontend/logs/frontend.log
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/ubuntu/hrm/local/chatui/frontend
+
+[Install]
+WantedBy=multi-user.target

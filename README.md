@@ -36,18 +36,59 @@ Prints a generated login password - save it, it's shown only once. Admins
 can add more users afterward via `POST /admin/users` (same shape as
 `vllm-router`'s).
 
-Run: `bash serve.sh fg` (foreground) or `bash serve.sh` (background, port 8002).
+In production the backend runs as a systemd service
+(`backend/chatui-backend.service`, installed to `/etc/systemd/system/`), so it
+survives reboots and crashes:
+
+```bash
+sudo cp backend/chatui-backend.service /etc/systemd/system/   # once
+sudo systemctl daemon-reload
+sudo systemctl enable --now chatui-backend
+
+systemctl status chatui-backend
+sudo systemctl restart chatui-backend
+```
+
+It still logs to `backend/logs/backend.log`, and is ordered after
+`vllm-router.service` (which it calls) so a boot brings the two up in the
+right order.
+
+For local debugging without systemd: `bash serve.sh fg` (foreground) or
+`bash serve.sh` (background, port 8002) - but not while the service is
+running, since port 8002 is already bound.
 
 ## Frontend (`frontend/`)
 
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev     # dev server with hot reload
 ```
 
 Serves on port 3000, proxying `/api/*` to the backend (port 8002) via
-Next.js rewrites - no CORS setup needed.
+Next.js rewrites - no CORS setup needed. Both `dev` and `start` bind the
+Tailscale IP (`100.97.153.111`), since this is the one service in the tree a
+remote browser has to reach.
+
+In production it runs the `next build` output under systemd
+(`frontend/chatui-frontend.service`):
+
+```bash
+sudo cp frontend/chatui-frontend.service /etc/systemd/system/   # once
+sudo systemctl daemon-reload
+sudo systemctl enable --now chatui-frontend
+```
+
+After changing frontend code, rebuild and restart - `next start` serves
+whatever is in `.next/`, it does not pick up source changes:
+
+```bash
+cd frontend && npm run build && sudo systemctl restart chatui-frontend
+```
+
+Logs go to `frontend/logs/frontend.log`. The unit hardcodes the nvm node path
+(`~/.nvm/versions/node/v24.18.0/bin/node`), so a node upgrade means editing
+`ExecStart`/`PATH` in the unit - otherwise it fails with `status=203/EXEC`.
 
 ## Architecture
 
